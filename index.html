@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Carpet AR Demo</title>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/examples/jsm/webxr/ARButton.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<script>
+  let camera, scene, renderer;
+  let controller;
+  let reticle;
+  let carpet;
+
+  init();
+  animate();
+
+  function init() {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    scene = new THREE.Scene();
+
+    camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.xr.enabled = true;
+    container.appendChild(renderer.domElement);
+
+    document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] }));
+
+    const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+    light.position.set(0.5, 1, 0.25);
+    scene.add(light);
+
+    const carpetTexture = new THREE.TextureLoader().load('https://chatgpt-image-hosting.s3.ap-south-1.amazonaws.com/demo/f1-min.png');
+    const carpetMaterial = new THREE.MeshBasicMaterial({ map: carpetTexture, transparent: true });
+    const carpetGeometry = new THREE.PlaneGeometry(1.5, 2); // Width, Height in meters
+    carpet = new THREE.Mesh(carpetGeometry, carpetMaterial);
+    carpet.rotation.x = -Math.PI / 2;
+    carpet.visible = false;
+    scene.add(carpet);
+
+    const controller = renderer.xr.getController(0);
+    scene.add(controller);
+
+    const reticleGeometry = new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2);
+    const reticleMaterial = new THREE.MeshBasicMaterial();
+    reticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
+    reticle.matrixAutoUpdate = false;
+    reticle.visible = false;
+    scene.add(reticle);
+
+    controller.addEventListener('select', () => {
+      if (reticle.visible) {
+        carpet.position.setFromMatrixPosition(reticle.matrix);
+        carpet.visible = true;
+      }
+    });
+
+    const session = renderer.xr.getSession();
+    session.addEventListener('select', () => {
+      if (reticle.visible) {
+        carpet.position.setFromMatrixPosition(reticle.matrix);
+        carpet.visible = true;
+      }
+    });
+
+    renderer.xr.addEventListener('sessionstart', () => {
+      const referenceSpace = renderer.xr.getReferenceSpace();
+      session.requestReferenceSpace('viewer').then((viewerSpace) => {
+        session.requestHitTestSource({ space: viewerSpace }).then((hitTestSource) => {
+          renderer.setAnimationLoop((timestamp, frame) => {
+            if (frame) {
+              const hitTestResults = frame.getHitTestResults(hitTestSource);
+              if (hitTestResults.length > 0) {
+                const hit = hitTestResults[0];
+                const pose = hit.getPose(referenceSpace);
+                reticle.visible = true;
+                reticle.matrix.fromArray(pose.transform.matrix);
+              } else {
+                reticle.visible = false;
+              }
+            }
+            renderer.render(scene, camera);
+          });
+        });
+      });
+    });
+  }
+
+  function animate() {
+    renderer.setAnimationLoop(() => {
+      renderer.render(scene, camera);
+    });
+  }
+</script>
+</body>
+</html>
